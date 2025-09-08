@@ -1,3 +1,22 @@
+// --- Deep Search Helper Function ---
+// This function recursively searches the entire API response for a valid image URL.
+function findFirstImageUrl(obj) {
+    if (typeof obj !== 'object' || obj === null) return null;
+    for (const key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+            const value = obj[key];
+            if (typeof value === 'string' && value.startsWith('https://') && (value.endsWith('.jpg') || value.endsWith('.png') || value.endsWith('.webp'))) {
+                return value;
+            }
+            if (typeof value === 'object') {
+                const result = findFirstImageUrl(value);
+                if (result) return result;
+            }
+        }
+    }
+    return null;
+}
+
 exports.handler = async function(event) {
     const { productName } = event.queryStringParameters;
     const apiKey = process.env.VALUESERP_API_KEY;
@@ -19,9 +38,7 @@ exports.handler = async function(event) {
         let imageUrl = 'https://placehold.co/600x400/f3f4f6/333333?text=Image\\nNot\\nFound';
         let deals = [];
 
-        // --- DEAL & IMAGE FINDING (DEAL LOGIC IS PERFECT AND UNCHANGED) ---
-
-        // 1. Find Live Deals (Logic is unchanged as requested)
+        // --- DEAL LOGIC (PERFECT AND UNCHANGED) ---
         if (data.shopping_results && data.shopping_results.length > 0) {
             const firstProduct = data.shopping_results[0];
             if (firstProduct.offers) {
@@ -43,7 +60,7 @@ exports.handler = async function(event) {
                 }));
         }
 
-        // 2. Find Product Image (FINAL, most robust logic)
+        // --- FINAL, EXPERT IMAGE FINDING LOGIC ---
         // Attempt 1: Prioritize the main shopping result image.
         if (data.shopping_results && data.shopping_results[0]?.image) {
             imageUrl = data.shopping_results[0].image;
@@ -55,16 +72,19 @@ exports.handler = async function(event) {
         // Attempt 3: Check the inline image carousel.
         else if (data.inline_images && data.inline_images.length > 0) {
             const realImage = data.inline_images.find(img => img.image && !img.image.startsWith('data:image/gif'));
-            if (realImage) {
-                imageUrl = realImage.image;
-            }
+            if (realImage) imageUrl = realImage.image;
         }
-        // Attempt 4: As a final fallback, check the thumbnail of the first regular search result.
+        // Attempt 4: Check the thumbnail of the first regular search result.
         else if (data.organic_results && data.organic_results[0]?.thumbnail) {
              imageUrl = data.organic_results[0].thumbnail;
         }
+        // Attempt 5 (Final Fallback): If all else fails, deep search the entire response.
+        else {
+            const foundImage = findFirstImageUrl(data);
+            if(foundImage) imageUrl = foundImage;
+        }
         
-        // 3. Check for any results
+        // Check for any results
         if (deals.length === 0 && imageUrl.startsWith('https://placehold.co')) {
              return { statusCode: 404, body: JSON.stringify({ error: "Oops! We couldn't find that product. Please try a different name." }) };
         }
