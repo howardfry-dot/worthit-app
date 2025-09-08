@@ -19,9 +19,9 @@ exports.handler = async function(event) {
         let imageUrl = 'https://placehold.co/600x400/f3f4f6/333333?text=Image\\nNot\\nFound';
         let deals = [];
 
-        // --- FINAL, ROBUST IMAGE & DEAL FINDING ---
+        // --- NEW HYBRID DEAL & IMAGE FINDING ---
 
-        // 1. Get Deals (Reverted to original, more accurate logic)
+        // 1. Prioritize Shopping Results for deals and image
         if (data.shopping_results && data.shopping_results.length > 0) {
             const firstProduct = data.shopping_results[0];
             if (firstProduct.offers) {
@@ -31,17 +31,33 @@ exports.handler = async function(event) {
                     link: offer.link
                 }));
             }
+            if (firstProduct.image) {
+                imageUrl = firstProduct.image;
+            }
         }
 
-        // 2. Find Image (New, three-step search for best image)
-        if (data.shopping_results && data.shopping_results[0]?.image) {
-            imageUrl = data.shopping_results[0].image;
-        } else if (data.inline_images && data.inline_images[0]?.image) {
-            imageUrl = data.inline_images[0].image;
-        } else if (data.organic_results) {
-            const resultWithImage = data.organic_results.find(result => result.thumbnail);
-            if (resultWithImage) {
-                imageUrl = resultWithImage.thumbnail;
+        // 2. Fallback to Organic Results if needed
+        // If we didn't find any deals yet, try the organic results
+        if (deals.length === 0 && data.organic_results) {
+            deals = data.organic_results
+                .filter(result => result.rich_snippet?.top?.detected_extensions?.price)
+                .slice(0, 3)
+                .map(result => ({
+                    source: result.domain.replace('www.', ''),
+                    price: result.rich_snippet.top.extensions[0],
+                    link: result.link
+                }));
+        }
+
+        // If we still have the placeholder image, try a deeper search in organic results
+        if (imageUrl.startsWith('https://placehold.co')) {
+             if (data.inline_images && data.inline_images[0]?.image) {
+                imageUrl = data.inline_images[0].image;
+            } else if (data.organic_results) {
+                const resultWithImage = data.organic_results.find(result => result.thumbnail);
+                if (resultWithImage) {
+                    imageUrl = resultWithImage.thumbnail;
+                }
             }
         }
         
