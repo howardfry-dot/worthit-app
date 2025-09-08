@@ -1,24 +1,3 @@
-// --- Deep Search Helper Function ---
-// This function recursively searches the entire API response for a valid image URL.
-function findFirstImageUrl(obj) {
-    if (typeof obj !== 'object' || obj === null) return null;
-    for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-            const value = obj[key];
-            // Check if the value is a plausible image URL, ignoring tiny data URIs
-            if (typeof value === 'string' && value.startsWith('https://') && (value.endsWith('.jpg') || value.endsWith('.png') || value.endsWith('.webp'))) {
-                return value;
-            }
-            // Recurse into nested objects
-            if (typeof value === 'object') {
-                const result = findFirstImageUrl(value);
-                if (result) return result;
-            }
-        }
-    }
-    return null;
-}
-
 exports.handler = async function(event) {
     const { productName } = event.queryStringParameters;
     const apiKey = process.env.VALUESERP_API_KEY;
@@ -27,6 +6,7 @@ exports.handler = async function(event) {
         return { statusCode: 500, body: JSON.stringify({ error: "API Key is not configured on Netlify." }) };
     }
 
+    // --- STEP 1: Get Shopping & Deal Data ---
     const shoppingUrl = `https://api.valueserp.com/search?api_key=${apiKey}&q=${encodeURIComponent(productName)}&gl=gb&tbm=shop&output=json`;
 
     try {
@@ -37,7 +17,7 @@ exports.handler = async function(event) {
              return { statusCode: 500, body: JSON.stringify({ error: `API Error: ${shoppingData.request_info.message}` }) };
         }
 
-        let imageUrl = null;
+        let imageUrl = null; // Start with no image
         let deals = [];
 
         // --- DEAL LOGIC (PERFECT AND UNCHANGED) ---
@@ -63,36 +43,27 @@ exports.handler = async function(event) {
         }
 
         // --- DEFINITIVE, FAILSAFE IMAGE LOGIC ---
-        // Stage 1: Prioritized Search in common, high-quality locations.
+        // Stage 1: Attempt to find a high-quality image from the primary shopping search.
         if (shoppingData.shopping_results && shoppingData.shopping_results[0]?.image) {
             imageUrl = shoppingData.shopping_results[0].image;
-        } else if (shoppingData.product_results?.media && shoppingData.product_results.media[0]?.link) {
-            imageUrl = shoppingData.product_results.media[0].link;
-        } else if (shoppingData.inline_images && shoppingData.inline_images.length > 0) {
-            const realImage = shoppingData.inline_images.find(img => img.image && !img.image.startsWith('data:image/gif'));
-            if (realImage) imageUrl = realImage.image;
-        } else if (shoppingData.organic_results && shoppingData.organic_results[0]?.thumbnail) {
-             imageUrl = shoppingData.organic_results[0].thumbnail;
-        }
-        
-        // Stage 2: Deep Scan of the entire result if no image has been found yet.
-        if (!imageUrl) {
-            console.log("No primary image found. Performing deep scan of shopping results.");
-            imageUrl = findFirstImageUrl(shoppingData);
         }
 
-        // Stage 3 (Final Failsafe): If still no image, perform a specific Google Images search.
+        // Stage 2 (The Failsafe): If no image was found, perform a dedicated Google Images search.
         if (!imageUrl) {
-            console.log("Deep scan failed. Falling back to dedicated Google Images search.");
+            console.log("No primary image found. Falling back to dedicated Google Images search.");
             const imageUrlSearch = `https://api.valueserp.com/search?api_key=${apiKey}&q=${encodeURIComponent(productName)}&gl=gb&tbm=isch&output=json`;
             const imageResponse = await fetch(imageUrlSearch);
             const imageData = await imageResponse.json();
             if (imageData.image_results && imageData.image_results.length > 0) {
-                const firstImage = imageData.image_results.find(img => img.image && img.image.startsWith('https'));
-                if (firstImage) imageUrl = firstImage.image;
+                // Find the first valid image that is a real URL, not a broken data string
+                const firstValidImage = imageData.image_results.find(img => img.image && img.image.startsWith('https'));
+                if (firstValidImage) {
+                    imageUrl = firstValidImage.image;
+                }
             }
         }
         
+        // If all stages fail, assign the placeholder URL so the frontend can show the icon.
         if (!imageUrl) {
             imageUrl = 'https://placehold.co/600x400/f3f4f6/333333?text=Image\\nNot\\nFound';
         }
