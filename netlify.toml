@@ -1,2 +1,9 @@
+[build]
+  # This tells Netlify where your website files are.
+  publish = "."
+  # This tells Netlify where your backend function code is.
+  functions = "functions/"
+
 [functions]
-  directory = "functions/"
+  # This is a technical setting to ensure the function runs correctly.
+  node_bundler = "esbuild"
