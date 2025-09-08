@@ -42,17 +42,25 @@ exports.handler = async function(event) {
                 }));
         }
 
-        // --- FAILSAFE IMAGE LOGIC ---
-        // Attempt 1: Prioritize high-quality shopping and product images.
+        // --- FINAL, FAILSAFE IMAGE LOGIC ---
+        // Stage 1: Prioritize high-quality shopping and product images from the initial search.
         if (shoppingData.shopping_results && shoppingData.shopping_results[0]?.image) {
             imageUrl = shoppingData.shopping_results[0].image;
         } else if (shoppingData.product_results?.media && shoppingData.product_results.media[0]?.link) {
             imageUrl = shoppingData.product_results.media[0].link;
+        } 
+        
+        // Stage 2: Fallback to thumbnails in organic results if no primary image is found.
+        if (!imageUrl && shoppingData.organic_results) {
+            const resultWithThumbnail = shoppingData.organic_results.find(result => result.thumbnail);
+            if(resultWithThumbnail) {
+                imageUrl = resultWithThumbnail.thumbnail;
+            }
         }
 
-        // Attempt 2 (Failsafe): If no image, perform a specific Google Images search.
+        // Stage 3 (Final Failsafe): If still no image, perform a specific Google Images search.
         if (!imageUrl) {
-            console.log("No shopping image found. Falling back to Google Images search.");
+            console.log("No primary image found. Falling back to dedicated Google Images search.");
             const imageUrlSearch = `https://api.valueserp.com/search?api_key=${apiKey}&q=${encodeURIComponent(productName)}&gl=gb&tbm=isch&output=json`;
             const imageResponse = await fetch(imageUrlSearch);
             const imageData = await imageResponse.json();
@@ -62,7 +70,7 @@ exports.handler = async function(event) {
             }
         }
         
-        // Final fallback to placeholder URL if all else fails.
+        // Final assignment to placeholder URL if all else fails.
         if (!imageUrl) {
             imageUrl = 'https://placehold.co/600x400/f3f4f6/333333?text=Image\\nNot\\nFound';
         }
