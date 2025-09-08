@@ -21,7 +21,7 @@
         .modal-leave-from { opacity: 1; }
         .modal-leave-to { opacity: 0; }
         .spinner {
-            border: 4px solid rgba(0, 0, 0, 0.1);
+            border: 4px solid rgba(255, 255, 255, 0.2);
             border-left-color: #FFB3C7; /* Klarna Pink */
             border-radius: 50%;
             width: 50px;
@@ -45,7 +45,7 @@
     <div class="min-h-screen flex flex-col items-center justify-start p-4 pt-12">
         <!-- Header -->
         <header class="text-center mb-8">
-             <h1 class="text-5xl font-extrabold tracking-tighter">
+             <h1 class="text-6xl font-extrabold tracking-tighter">
                 <span class="text-white">WorthIt</span><span class="text-klarna-pink">.</span>
             </h1>
         </header>
@@ -53,7 +53,7 @@
         <!-- Main Content -->
         <main class="w-full max-w-md">
             <div class="text-center mb-8">
-                <h2 class="text-4xl font-bold tracking-tight text-white sm:text-5xl">Know the true cost. <span class="text-klarna-pink">Instantly.</span></h2>
+                <h2 class="text-3xl font-bold tracking-tight text-white sm:text-4xl">Know the true cost. <span class="text-klarna-pink">Instantly.</span></h2>
             </div>
 
             <!-- Calculator Card -->
@@ -91,14 +91,15 @@
 
     <!-- Modal for Results -->
     <div id="resultsModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 hidden modal-enter-from" data-transition>
-        <div id="modalContent" class="bg-white rounded-3xl shadow-2xl w-full max-w-sm text-black text-center p-6 relative">
-            <!-- Spinner -->
-            <div id="spinner" class="flex justify-center items-center h-80">
-                <div class="spinner"></div>
-            </div>
+        <!-- Spinner (now a direct child of the overlay) -->
+        <div id="spinner" class="hidden">
+            <div class="spinner"></div>
+        </div>
 
-            <!-- Results -->
-            <div id="resultsContent" class="hidden">
+        <!-- Results Card (initially hidden) -->
+        <div id="modalContent" class="bg-white rounded-3xl shadow-2xl w-full max-w-sm text-black text-center p-6 hidden">
+            <!-- Results Content -->
+            <div id="resultsContent">
                  <!-- Real Image (initially hidden) -->
                 <div id="imageContainer" class="w-full h-48 bg-gray-100 rounded-2xl flex items-center justify-center mb-6 overflow-hidden">
                     <img id="productImage" src="" alt="Product Image" class="hidden w-full h-full object-cover">
@@ -112,9 +113,9 @@
 
                 <h2 class="text-2xl font-bold text-black">Worth It?</h2>
                 <p class="text-6xl font-extrabold my-2 tracking-tight text-black">
-                    <span id="resultValue"></span><span id="resultUnit" class="text-4xl text-gray-500 font-bold"></span>
+                    <span id="resultValue"></span><span id="resultUnit" class="text-4xl text-black font-bold"></span>
                 </p>
-                <p id="resultPeriod" class="text-2xl font-bold mb-4 text-gray-500"></p>
+                <p id="resultPeriod" class="text-2xl font-bold mb-4 text-black"></p>
                 <p id="calculationBasis" class="text-xs text-gray-400 mb-6"></p>
 
                 <div id="dealsSection" class="text-left">
@@ -178,10 +179,9 @@
             });
             
             spinner.classList.remove('hidden');
-            resultsContent.classList.add('hidden');
+            modalContent.classList.add('hidden');
 
             try {
-                // This is the correct call for the live Netlify function.
                 const response = await fetch(`/.netlify/functions/get-product-data?productName=${encodeURIComponent(productName)}`);
                 const productData = await response.json();
 
@@ -192,7 +192,7 @@
                 setTimeout(() => {
                     displayResults(price, category, productData);
                     spinner.classList.add('hidden');
-                    resultsContent.classList.remove('hidden');
+                    modalContent.classList.remove('hidden');
                 }, 1500);
 
             } catch (error) {
@@ -218,7 +218,6 @@
             const usageText = `${data.usage} ${data.usage > 1 ? data.plural : data.unit} per week`;
             calculationBasis.textContent = `Calculated on average usage of a ${lifespanText} with ${usageText}.`;
 
-            // Display Image with Fallback
             const { imageUrl, deals } = productData;
             const productNameForImage = document.getElementById('productName').value || "Product";
             productImage.alt = productNameForImage;
@@ -232,7 +231,6 @@
                 imagePlaceholder.classList.remove('hidden');
             }
 
-            // Display Deals
             dealsList.innerHTML = '';
             if (deals && deals.length > 0) {
                  deals.forEach(deal => {
