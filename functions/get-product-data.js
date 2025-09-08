@@ -19,13 +19,11 @@ exports.handler = async function(event) {
         let imageUrl = 'https://placehold.co/600x400/f3f4f6/333333?text=Image\\nNot\\nFound';
         let deals = [];
 
-        // --- NEW, MORE ROBUST IMAGE & DEAL FINDING ---
+        // --- FINAL, ROBUST IMAGE & DEAL FINDING ---
 
-        // Primary path: Try to get data from shopping_results first
+        // 1. Get Deals (Reverted to original, more accurate logic)
         if (data.shopping_results && data.shopping_results.length > 0) {
             const firstProduct = data.shopping_results[0];
-            if(firstProduct.image) imageUrl = firstProduct.image;
-            
             if (firstProduct.offers) {
                 deals = firstProduct.offers.slice(0, 3).map(offer => ({
                     source: offer.seller,
@@ -33,27 +31,21 @@ exports.handler = async function(event) {
                     link: offer.link
                 }));
             }
-        } 
-        // Fallback path: If no shopping results, try to build from organic data
-        else if (data.organic_results && data.organic_results.length > 0) {
-            // Find the first available image from any organic result that has a thumbnail
+        }
+
+        // 2. Find Image (New, three-step search for best image)
+        if (data.shopping_results && data.shopping_results[0]?.image) {
+            imageUrl = data.shopping_results[0].image;
+        } else if (data.inline_images && data.inline_images[0]?.image) {
+            imageUrl = data.inline_images[0].image;
+        } else if (data.organic_results) {
             const resultWithImage = data.organic_results.find(result => result.thumbnail);
             if (resultWithImage) {
                 imageUrl = resultWithImage.thumbnail;
             }
-
-            // Find prices in the organic results
-            deals = data.organic_results
-                .filter(result => result.rich_snippet?.top?.detected_extensions?.price)
-                .slice(0, 3)
-                .map(result => ({
-                    source: result.domain.replace('www.', ''),
-                    price: result.rich_snippet.top.extensions[0],
-                    link: result.link
-                }));
         }
-
-        // If after all that, we still have no deals and no real image, then error.
+        
+        // 3. Check for any results
         if (deals.length === 0 && imageUrl.startsWith('https://placehold.co')) {
              return { statusCode: 404, body: JSON.stringify({ error: "Oops! We couldn't find that product. Please try a different name." }) };
         }
