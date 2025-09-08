@@ -1,28 +1,4 @@
-// --- Deep Search Helper Function ---
-// This function recursively searches the entire API response for a valid image URL.
-function findFirstImageUrl(obj) {
-    if (typeof obj !== 'object' || obj === null) return null;
-    for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-            const value = obj[key];
-            // Check if the value is a plausible image URL, ignoring tiny data URIs
-            if (typeof value === 'string' && value.startsWith('https://') && (value.endsWith('.jpg') || value.endsWith('.png') || value.endsWith('.webp'))) {
-                return value;
-            }
-            // Recurse into nested objects and arrays
-            if (Array.isArray(value)) {
-                 for (const item of value) {
-                    const result = findFirstImageUrl(item);
-                    if (result) return result;
-                }
-            } else if (typeof value === 'object') {
-                const result = findFirstImageUrl(value);
-                if (result) return result;
-            }
-        }
-    }
-    return null;
-}
+// This is a temporary test function to isolate the image display issue.
 
 exports.handler = async function(event) {
     const { productName } = event.queryStringParameters;
@@ -42,7 +18,6 @@ exports.handler = async function(event) {
              return { statusCode: 500, body: JSON.stringify({ error: `API Error: ${shoppingData.request_info.message}` }) };
         }
 
-        let imageUrl = null;
         let deals = [];
 
         // --- DEAL LOGIC (PERFECT AND UNCHANGED) ---
@@ -67,37 +42,11 @@ exports.handler = async function(event) {
                 }));
         }
 
-        // --- DEFINITIVE, FAILSAFE IMAGE LOGIC ---
-        // Stage 1: Prioritized Search in common, high-quality locations.
-        if (shoppingData.shopping_results && shoppingData.shopping_results[0]?.image) {
-            imageUrl = shoppingData.shopping_results[0].image;
-        } else if (shoppingData.product_results?.media && shoppingData.product_results.media[0]?.link) {
-            imageUrl = shoppingData.product_results.media[0].link;
-        }
-        
-        // Stage 2: Deep Scan of the entire result if no image has been found yet.
-        if (!imageUrl) {
-            console.log("No primary image found. Performing deep scan of shopping results.");
-            imageUrl = findFirstImageUrl(shoppingData);
-        }
+        // --- IMAGE TEST LOGIC ---
+        // We are temporarily forcing a generic image URL to test the frontend.
+        const imageUrl = 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/Sony_WH-1000XM3_product_shot.jpg/1920px-Sony_WH-1000XM3_product_shot.jpg';
 
-        // Stage 3 (Final Failsafe): If still no image, perform a specific Google Images search.
-        if (!imageUrl) {
-            console.log("Deep scan failed. Falling back to dedicated Google Images search.");
-            const imageUrlSearch = `https://api.valueserp.com/search?api_key=${apiKey}&q=${encodeURIComponent(productName)}&gl=gb&tbm=isch&output=json`;
-            const imageResponse = await fetch(imageUrlSearch);
-            const imageData = await imageResponse.json();
-            if (imageData.image_results && imageData.image_results.length > 0) {
-                const firstImage = imageData.image_results.find(img => img.image && img.image.startsWith('https'));
-                if (firstImage) imageUrl = firstImage.image;
-            }
-        }
-        
-        if (!imageUrl) {
-            imageUrl = 'https://placehold.co/600x400/f3f4f6/333333?text=Image\\nNot\\nFound';
-        }
-
-        if (deals.length === 0 && imageUrl.includes('placehold.co')) {
+        if (deals.length === 0) {
              return { statusCode: 404, body: JSON.stringify({ error: "Oops! We couldn't find that product. Please try a different name." }) };
         }
 
