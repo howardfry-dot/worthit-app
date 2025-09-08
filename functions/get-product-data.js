@@ -1,29 +1,3 @@
-// --- Deep Search Helper Function ---
-// This function recursively searches the entire API response for a valid image URL.
-function findFirstImageUrl(obj) {
-    if (typeof obj !== 'object' || obj === null) return null;
-    for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-            const value = obj[key];
-            // Check if the value is a plausible image URL, ignoring tiny data URIs
-            if (typeof value === 'string' && value.startsWith('https://') && (value.endsWith('.jpg') || value.endsWith('.png') || value.endsWith('.webp'))) {
-                return value;
-            }
-            // Recurse into nested objects and arrays
-            if (Array.isArray(value)) {
-                 for (const item of value) {
-                    const result = findFirstImageUrl(item);
-                    if (result) return result;
-                }
-            } else if (typeof value === 'object') {
-                const result = findFirstImageUrl(value);
-                if (result) return result;
-            }
-        }
-    }
-    return null;
-}
-
 exports.handler = async function(event) {
     const { productName } = event.queryStringParameters;
     const apiKey = process.env.VALUESERP_API_KEY;
@@ -32,6 +6,7 @@ exports.handler = async function(event) {
         return { statusCode: 500, body: JSON.stringify({ error: "API Key is not configured on Netlify." }) };
     }
 
+    // --- STEP 1: Get Shopping & Deal Data ---
     const shoppingUrl = `https://api.valueserp.com/search?api_key=${apiKey}&q=${encodeURIComponent(productName)}&gl=gb&tbm=shop&output=json`;
 
     try {
@@ -68,31 +43,21 @@ exports.handler = async function(event) {
         }
 
         // --- DEFINITIVE, FAILSAFE IMAGE LOGIC ---
-        // Stage 1: Prioritized Search in common, high-quality locations.
-        if (shoppingData.shopping_results && shoppingData.shopping_results[0]?.image) {
-            imageUrl = shoppingData.shopping_results[0].image;
-        } else if (shoppingData.product_results?.media && shoppingData.product_results.media[0]?.link) {
-            imageUrl = shoppingData.product_results.media[0].link;
-        }
-        
-        // Stage 2: Deep Scan of the entire result if no image has been found yet.
-        if (!imageUrl) {
-            console.log("No primary image found. Performing deep scan of shopping results.");
-            imageUrl = findFirstImageUrl(shoppingData);
-        }
+        // We now perform a dedicated search on Google Images.
+        console.log("Performing dedicated Google Images search.");
+        const imageUrlSearch = `https://api.valueserp.com/search?api_key=${apiKey}&q=${encodeURIComponent(productName)}&gl=gb&tbm=isch&output=json`;
+        const imageResponse = await fetch(imageUrlSearch);
+        const imageData = await imageResponse.json();
 
-        // Stage 3 (Final Failsafe): If still no image, perform a specific Google Images search.
-        if (!imageUrl) {
-            console.log("Deep scan failed. Falling back to dedicated Google Images search.");
-            const imageUrlSearch = `https://api.valueserp.com/search?api_key=${apiKey}&q=${encodeURIComponent(productName)}&gl=gb&tbm=isch&output=json`;
-            const imageResponse = await fetch(imageUrlSearch);
-            const imageData = await imageResponse.json();
-            if (imageData.image_results && imageData.image_results.length > 0) {
-                const firstImage = imageData.image_results.find(img => img.image && img.image.startsWith('https'));
-                if (firstImage) imageUrl = firstImage.image;
+        if (imageData.image_results && imageData.image_results.length > 0) {
+            // Find the first valid image that is a real URL.
+            const firstValidImage = imageData.image_results.find(img => img.image && img.image.startsWith('https'));
+            if (firstValidImage) {
+                imageUrl = firstValidImage.image;
             }
         }
         
+        // If all stages fail, assign the placeholder URL so the frontend can show the icon.
         if (!imageUrl) {
             imageUrl = 'https://placehold.co/600x400/f3f4f6/333333?text=Image\\nNot\\nFound';
         }
@@ -111,3 +76,4 @@ exports.handler = async function(event) {
         return { statusCode: 500, body: JSON.stringify({ error: "The backend function failed." }) };
     }
 };
+
