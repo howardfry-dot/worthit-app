@@ -19,10 +19,9 @@ exports.handler = async function(event) {
         let imageUrl = 'https://placehold.co/600x400/f3f4f6/333333?text=Image\\nNot\\nFound';
         let deals = [];
 
-        // --- DEAL & IMAGE FINDING (DEAL LOGIC UNCHANGED) ---
+        // --- DEAL & IMAGE FINDING (DEAL LOGIC IS PERFECT AND UNCHANGED) ---
 
         // 1. Find Live Deals (Logic is unchanged as requested)
-        // Prioritize Shopping Results
         if (data.shopping_results && data.shopping_results.length > 0) {
             const firstProduct = data.shopping_results[0];
             if (firstProduct.offers) {
@@ -33,7 +32,6 @@ exports.handler = async function(event) {
                 }));
             }
         }
-        // Fallback to Organic Results if no deals were found
         if (deals.length === 0 && data.organic_results) {
             deals = data.organic_results
                 .filter(result => result.rich_snippet?.top?.detected_extensions?.price)
@@ -45,21 +43,25 @@ exports.handler = async function(event) {
                 }));
         }
 
-        // 2. Find Product Image (New, more robust logic)
-        // Attempt 1: Check the primary shopping result first.
+        // 2. Find Product Image (FINAL, most robust logic)
+        // Attempt 1: Prioritize the main shopping result image.
         if (data.shopping_results && data.shopping_results[0]?.image) {
             imageUrl = data.shopping_results[0].image;
         } 
-        // Attempt 2: If no luck, check for a dedicated product results block.
+        // Attempt 2: Check for a dedicated product results block.
         else if (data.product_results?.media && data.product_results.media[0]?.link) {
             imageUrl = data.product_results.media[0].link;
         }
-        // Attempt 3: If still no luck, check the inline image carousel.
+        // Attempt 3: Check the inline image carousel.
         else if (data.inline_images && data.inline_images.length > 0) {
             const realImage = data.inline_images.find(img => img.image && !img.image.startsWith('data:image/gif'));
             if (realImage) {
                 imageUrl = realImage.image;
             }
+        }
+        // Attempt 4: As a final fallback, check the thumbnail of the first regular search result.
+        else if (data.organic_results && data.organic_results[0]?.thumbnail) {
+             imageUrl = data.organic_results[0].thumbnail;
         }
         
         // 3. Check for any results
