@@ -1,22 +1,3 @@
-// --- Deep Search Helper Function ---
-// This function recursively searches the entire API response for a valid image URL.
-function findFirstImageUrl(obj) {
-    if (typeof obj !== 'object' || obj === null) return null;
-    for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-            const value = obj[key];
-            if (typeof value === 'string' && value.startsWith('https://') && (value.endsWith('.jpg') || value.endsWith('.png') || value.endsWith('.webp'))) {
-                return value;
-            }
-            if (typeof value === 'object') {
-                const result = findFirstImageUrl(value);
-                if (result) return result;
-            }
-        }
-    }
-    return null;
-}
-
 exports.handler = async function(event) {
     const { productName } = event.queryStringParameters;
     const apiKey = process.env.VALUESERP_API_KEY;
@@ -25,22 +6,23 @@ exports.handler = async function(event) {
         return { statusCode: 500, body: JSON.stringify({ error: "API Key is not configured on Netlify." }) };
     }
 
-    const url = `https://api.valueserp.com/search?api_key=${apiKey}&q=${encodeURIComponent(productName)}&gl=gb&tbm=shop&output=json`;
+    // --- STEP 1: Get Shopping & Deal Data ---
+    const shoppingUrl = `https://api.valueserp.com/search?api_key=${apiKey}&q=${encodeURIComponent(productName)}&gl=gb&tbm=shop&output=json`;
 
     try {
-        const response = await fetch(url);
-        const data = await response.json();
+        const shoppingResponse = await fetch(shoppingUrl);
+        const shoppingData = await shoppingResponse.json();
 
-        if (data.request_info && data.request_info.success === false) {
-             return { statusCode: 500, body: JSON.stringify({ error: `API Error: ${data.request_info.message}` }) };
+        if (shoppingData.request_info && shoppingData.request_info.success === false) {
+             return { statusCode: 500, body: JSON.stringify({ error: `API Error: ${shoppingData.request_info.message}` }) };
         }
 
-        let imageUrl = 'https://placehold.co/600x400/f3f4f6/333333?text=Image\\nNot\\nFound';
+        let imageUrl = null; // Start with no image
         let deals = [];
 
         // --- DEAL LOGIC (PERFECT AND UNCHANGED) ---
-        if (data.shopping_results && data.shopping_results.length > 0) {
-            const firstProduct = data.shopping_results[0];
+        if (shoppingData.shopping_results && shoppingData.shopping_results.length > 0) {
+            const firstProduct = shoppingData.shopping_results[0];
             if (firstProduct.offers) {
                 deals = firstProduct.offers.slice(0, 3).map(offer => ({
                     source: offer.seller,
@@ -49,8 +31,8 @@ exports.handler = async function(event) {
                 }));
             }
         }
-        if (deals.length === 0 && data.organic_results) {
-            deals = data.organic_results
+        if (deals.length === 0 && shoppingData.organic_results) {
+            deals = shoppingData.organic_results
                 .filter(result => result.rich_snippet?.top?.detected_extensions?.price)
                 .slice(0, 3)
                 .map(result => ({
@@ -60,32 +42,32 @@ exports.handler = async function(event) {
                 }));
         }
 
-        // --- FINAL, EXPERT IMAGE FINDING LOGIC ---
-        // Attempt 1: Prioritize the main shopping result image.
-        if (data.shopping_results && data.shopping_results[0]?.image) {
-            imageUrl = data.shopping_results[0].image;
-        } 
-        // Attempt 2: Check for a dedicated product results block.
-        else if (data.product_results?.media && data.product_results.media[0]?.link) {
-            imageUrl = data.product_results.media[0].link;
+        // --- FAILSAFE IMAGE LOGIC ---
+        // Attempt 1: Prioritize high-quality shopping and product images.
+        if (shoppingData.shopping_results && shoppingData.shopping_results[0]?.image) {
+            imageUrl = shoppingData.shopping_results[0].image;
+        } else if (shoppingData.product_results?.media && shoppingData.product_results.media[0]?.link) {
+            imageUrl = shoppingData.product_results.media[0].link;
         }
-        // Attempt 3: Check the inline image carousel.
-        else if (data.inline_images && data.inline_images.length > 0) {
-            const realImage = data.inline_images.find(img => img.image && !img.image.startsWith('data:image/gif'));
-            if (realImage) imageUrl = realImage.image;
-        }
-        // Attempt 4: Check the thumbnail of the first regular search result.
-        else if (data.organic_results && data.organic_results[0]?.thumbnail) {
-             imageUrl = data.organic_results[0].thumbnail;
-        }
-        // Attempt 5 (Final Fallback): If all else fails, deep search the entire response.
-        else {
-            const foundImage = findFirstImageUrl(data);
-            if(foundImage) imageUrl = foundImage;
+
+        // Attempt 2 (Failsafe): If no image, perform a specific Google Images search.
+        if (!imageUrl) {
+            console.log("No shopping image found. Falling back to Google Images search.");
+            const imageUrlSearch = `https://api.valueserp.com/search?api_key=${apiKey}&q=${encodeURIComponent(productName)}&gl=gb&tbm=isch&output=json`;
+            const imageResponse = await fetch(imageUrlSearch);
+            const imageData = await imageResponse.json();
+            if (imageData.image_results && imageData.image_results.length > 0) {
+                const firstImage = imageData.image_results.find(img => img.image && img.image.startsWith('https'));
+                if (firstImage) imageUrl = firstImage.image;
+            }
         }
         
-        // Check for any results
-        if (deals.length === 0 && imageUrl.startsWith('https://placehold.co')) {
+        // Final fallback to placeholder URL if all else fails.
+        if (!imageUrl) {
+            imageUrl = 'https://placehold.co/600x400/f3f4f6/333333?text=Image\\nNot\\nFound';
+        }
+
+        if (deals.length === 0 && imageUrl.includes('placehold.co')) {
              return { statusCode: 404, body: JSON.stringify({ error: "Oops! We couldn't find that product. Please try a different name." }) };
         }
 
