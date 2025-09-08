@@ -19,9 +19,10 @@ exports.handler = async function(event) {
         let imageUrl = 'https://placehold.co/600x400/f3f4f6/333333?text=Image\\nNot\\nFound';
         let deals = [];
 
-        // --- NEW HYBRID DEAL & IMAGE FINDING ---
+        // --- DEAL & IMAGE FINDING (DEAL LOGIC UNCHANGED) ---
 
-        // 1. Prioritize Shopping Results for deals and image
+        // 1. Find Live Deals (Logic is unchanged as requested)
+        // Prioritize Shopping Results
         if (data.shopping_results && data.shopping_results.length > 0) {
             const firstProduct = data.shopping_results[0];
             if (firstProduct.offers) {
@@ -31,13 +32,8 @@ exports.handler = async function(event) {
                     link: offer.link
                 }));
             }
-            if (firstProduct.image) {
-                imageUrl = firstProduct.image;
-            }
         }
-
-        // 2. Fallback to Organic Results if needed
-        // If we didn't find any deals yet, try the organic results
+        // Fallback to Organic Results if no deals were found
         if (deals.length === 0 && data.organic_results) {
             deals = data.organic_results
                 .filter(result => result.rich_snippet?.top?.detected_extensions?.price)
@@ -49,15 +45,20 @@ exports.handler = async function(event) {
                 }));
         }
 
-        // If we still have the placeholder image, try a deeper search in organic results
-        if (imageUrl.startsWith('https://placehold.co')) {
-             if (data.inline_images && data.inline_images[0]?.image) {
-                imageUrl = data.inline_images[0].image;
-            } else if (data.organic_results) {
-                const resultWithImage = data.organic_results.find(result => result.thumbnail);
-                if (resultWithImage) {
-                    imageUrl = resultWithImage.thumbnail;
-                }
+        // 2. Find Product Image (New, more robust logic)
+        // Attempt 1: Check the primary shopping result first.
+        if (data.shopping_results && data.shopping_results[0]?.image) {
+            imageUrl = data.shopping_results[0].image;
+        } 
+        // Attempt 2: If no luck, check for a dedicated product results block.
+        else if (data.product_results?.media && data.product_results.media[0]?.link) {
+            imageUrl = data.product_results.media[0].link;
+        }
+        // Attempt 3: If still no luck, check the inline image carousel.
+        else if (data.inline_images && data.inline_images.length > 0) {
+            const realImage = data.inline_images.find(img => img.image && !img.image.startsWith('data:image/gif'));
+            if (realImage) {
+                imageUrl = realImage.image;
             }
         }
         
