@@ -100,10 +100,9 @@
         <div id="modalContent" class="bg-white rounded-3xl shadow-2xl w-full max-w-sm text-black text-center p-6 hidden">
             <!-- Results Content -->
             <div id="resultsContent">
-                 <!-- Real Image (initially hidden) -->
+                 <!-- Image Container -->
                 <div id="imageContainer" class="w-full h-48 bg-gray-100 rounded-2xl flex items-center justify-center mb-6 overflow-hidden">
                     <img id="productImage" src="" alt="Product Image" class="hidden w-full h-full object-cover">
-                    <!-- Icon Placeholder -->
                     <div id="imagePlaceholder" class="hidden">
                          <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -118,7 +117,27 @@
                 <p id="resultPeriod" class="text-2xl font-bold mb-4 text-black"></p>
                 <p id="calculationBasis" class="text-xs text-gray-400 mb-6"></p>
 
-                <div id="dealsSection" class="text-left">
+                <!-- Interactive Controls -->
+                <div class="border-t border-gray-200 mt-6 pt-4 space-y-3 text-left">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-medium text-gray-600">Lifespan</span>
+                        <div class="flex items-center space-x-3">
+                            <button id="lifespanMinus" class="bg-gray-200 rounded-full h-7 w-7 flex items-center justify-center text-lg font-bold hover:bg-gray-300">-</button>
+                            <span id="lifespanValue" class="text-sm font-bold w-16 text-center"></span>
+                            <button id="lifespanPlus" class="bg-gray-200 rounded-full h-7 w-7 flex items-center justify-center text-lg font-bold hover:bg-gray-300">+</button>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span id="usageLabel" class="text-sm font-medium text-gray-600">Usage</span>
+                        <div class="flex items-center space-x-3">
+                            <button id="usageMinus" class="bg-gray-200 rounded-full h-7 w-7 flex items-center justify-center text-lg font-bold hover:bg-gray-300">-</button>
+                            <span id="usageValue" class="text-sm font-bold w-20 text-center"></span>
+                            <button id="usagePlus" class="bg-gray-200 rounded-full h-7 w-7 flex items-center justify-center text-lg font-bold hover:bg-gray-300">+</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="dealsSection" class="text-left mt-6">
                      <h3 class="text-lg font-bold mb-3">Live Deals</h3>
                      <div id="dealsList" class="space-y-2">
                         <!-- Deals will be injected here -->
@@ -142,7 +161,21 @@
         const dealsList = document.getElementById('dealsList');
         const productImage = document.getElementById('productImage');
         const imagePlaceholder = document.getElementById('imagePlaceholder');
+        
+        // Interactive controls
+        const lifespanMinus = document.getElementById('lifespanMinus');
+        const lifespanPlus = document.getElementById('lifespanPlus');
+        const lifespanValue = document.getElementById('lifespanValue');
+        const usageMinus = document.getElementById('usageMinus');
+        const usagePlus = document.getElementById('usagePlus');
+        const usageValue = document.getElementById('usageValue');
+        const usageLabel = document.getElementById('usageLabel');
 
+        // Global state for recalculation
+        let currentPrice = 0;
+        let currentLifespan = 0;
+        let currentUsage = 0;
+        let currentCategoryData = {};
 
         const categoryData = {
             "Electronics": { lifespan: 4, usage: 15, unit: 'hour', plural: 'hours' },
@@ -203,20 +236,32 @@
                 }, 500);
             }
         }
-        
-        function displayResults(price, category, productData) {
-            const data = categoryData[category];
-            const totalUses = data.lifespan * 52 * data.usage;
-            const costPerUse = price / totalUses;
+
+        function recalculate() {
+            const totalUses = currentLifespan * 52 * currentUsage;
+            const costPerUse = totalUses > 0 ? currentPrice / totalUses : 0;
             
             const formatted = formatPrice(costPerUse);
             resultValue.textContent = formatted.value;
             resultUnit.textContent = formatted.unit;
-            resultPeriod.textContent = `per ${data.unit}`;
+            resultPeriod.textContent = `per ${currentCategoryData.unit}`;
             
-            const lifespanText = `${data.lifespan}-year lifespan`;
-            const usageText = `${data.usage} ${data.usage > 1 ? data.plural : data.unit} per week`;
-            calculationBasis.textContent = `Calculated on average usage of a ${lifespanText} with ${usageText}.`;
+            lifespanValue.textContent = `${currentLifespan} ${currentLifespan > 1 ? 'years' : 'year'}`;
+            usageValue.textContent = `${currentUsage} ${currentUsage > 1 ? currentCategoryData.plural : currentCategoryData.unit}/wk`;
+            usageLabel.textContent = `Usage (per week)`;
+            
+            const lifespanText = `${currentLifespan}-year lifespan`;
+            const usageText = `${currentUsage} ${currentUsage > 1 ? currentCategoryData.plural : currentCategoryData.unit} per week`;
+            calculationBasis.textContent = `Calculated on usage of a ${lifespanText} with ${usageText}.`;
+        }
+        
+        function displayResults(price, category, productData) {
+            currentPrice = price;
+            currentCategoryData = categoryData[category];
+            currentLifespan = currentCategoryData.lifespan;
+            currentUsage = currentCategoryData.usage;
+
+            recalculate(); // Perform initial calculation and display
 
             const { imageUrl, deals } = productData;
             const productNameForImage = document.getElementById('productName').value || "Product";
@@ -264,6 +309,28 @@
             if (e.target === resultsModal) {
                 hideModal();
             }
+        });
+        
+        // Event Listeners for new interactive controls
+        lifespanMinus.addEventListener('click', () => {
+            if (currentLifespan > 1) {
+                currentLifespan--;
+                recalculate();
+            }
+        });
+        lifespanPlus.addEventListener('click', () => {
+            currentLifespan++;
+            recalculate();
+        });
+        usageMinus.addEventListener('click', () => {
+            if (currentUsage > 1) {
+                currentUsage--;
+                recalculate();
+            }
+        });
+        usagePlus.addEventListener('click', () => {
+            currentUsage++;
+            recalculate();
         });
 
     </script>
